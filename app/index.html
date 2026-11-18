@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0d0d0d">
+<meta name="mobile-web-app-capable" content="yes">
+<title>FAROL · painel do carro</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone-192.png">
+<link rel="apple-touch-icon" href="icone-192.png">
+<style>
+/* Escrito para rodar em WebView antigo de multimídia (Chrome 60+):
+   sem gap em flex, sem aspect-ratio, sem inset, sem clamp(), sem filtros pesados. */
+:root{
+  --plane:#0d0d0d; --surface:#1a1a19; --surface-2:#262624; --line:#2c2c2a; --axis:#383835;
+  --ink:#f0efec; --ink-2:#c3c2b7; --muted:#898781;
+  --good:#0ca30c; --warn:#fab219; --crit:#d03b3b;
+  --accent:#6f9bff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--plane);color:var(--ink);overflow:hidden}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:1rem;line-height:1.25;
+  -webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+h2{font-size:1.05rem;font-weight:600;margin-bottom:.7rem}
+
+#app{display:flex;height:100%}
+.rail{width:5.5rem;flex:none;display:flex;flex-direction:column;background:var(--surface);border-right:1px solid var(--line)}
+.rail button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);position:relative;font-size:.8rem}
+.rail svg{display:block;width:1.75rem;height:1.75rem;margin:0 auto .35rem;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.rail button.is-on{color:var(--ink)}
+.rail button.is-on:before{content:"";position:absolute;left:0;top:24%;bottom:24%;width:.25rem;border-radius:0 .25rem .25rem 0;background:var(--accent)}
+.rail button:active,.seg button:active,.btn:active,.stepper button:active,.icon:active{background:var(--surface-2)}
+
+.stage{flex:1;min-width:0;display:flex;flex-direction:column}
+.top{height:3.25rem;flex:none;display:flex;align-items:center;padding:0 .9rem 0 1.1rem;border-bottom:1px solid var(--line)}
+.brand{font-weight:700;letter-spacing:.28em;font-size:.95rem}
+.chip{margin-left:1.1rem;display:flex;align-items:center;font-size:.8rem;color:var(--ink-2);border:1px solid var(--axis);border-radius:1rem;padding:.25rem .75rem}
+.chip i{display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:var(--warn);margin-right:.45rem}
+.chip.live i{background:var(--good)}
+.sp{flex:1}
+.clock b{font-size:1.5rem;font-weight:600}
+.clock span{color:var(--muted);font-size:.85rem;margin-left:.6rem}
+.icon{width:2.8rem;height:2.8rem;margin-left:.7rem;border-radius:.6rem;display:flex;align-items:center;justify-content:center;color:var(--ink-2)}
+.icon svg{width:1.4rem;height:1.4rem;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+main{flex:1;position:relative;min-height:0;overflow:hidden}
+.view{position:absolute;top:0;left:0;right:0;bottom:0;padding:.9rem;display:none}
+.view.is-on{display:flex}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:.9rem}
+.lbl{color:var(--muted);font-size:.85rem}
+.val{font-size:1.9rem;font-weight:600;line-height:1.15;margin-top:.1rem;white-space:nowrap}
+.val small{font-size:.85rem;font-weight:400;color:var(--muted);margin-left:.3rem}
+
+/* medidor: trilho é o mesmo tom do preenchimento, mais apagado */
+.bar{height:.4rem;border-radius:.2rem;margin-top:.55rem;position:relative;overflow:hidden}
+.bar:before{content:"";position:absolute;top:0;left:0;right:0;bottom:0;background:var(--accent);opacity:.2}
+.bar i{position:absolute;top:0;left:0;bottom:0;width:100%;background:var(--accent);border-radius:.2rem;transform:translateX(-100%)}
+.bar i.warn{background:var(--warn)} .bar i.crit{background:var(--crit)}
+
+/* estado: sempre ícone + palavra, nunca só a cor */
+.st{display:flex;align-items:center;font-size:.8rem;color:var(--ink-2);margin-top:.45rem;min-height:1rem}
+.st svg{width:.9rem;height:.9rem;margin-right:.3rem;flex:none}
+.st.good svg{fill:var(--good)} .st.warn svg{fill:var(--warn)} .st.crit svg{fill:var(--crit)} .st.info svg{fill:var(--muted)}
+
+/* ---- início */
+#view-home{flex-direction:column}
+.home-main{flex:1;min-height:0;display:flex}
+.col-speed{width:20rem;flex:none;display:flex;flex-direction:column}
+.gaugebox{flex:1;min-height:0;position:relative;margin:.4rem .6rem 0}
+.gauge{position:absolute;top:0;left:0;width:100%;height:100%}
+.gauge .g-track{stroke:var(--accent);opacity:.2}
+.gauge .g-arc{stroke:var(--accent)}
+.gauge .hero{font-size:80px;font-weight:600;fill:var(--ink)}
+.gauge .unit{font-size:15px;fill:var(--muted)}
+.gauge #ticks line{stroke:var(--axis);stroke-width:1.5}
+.gauge #ticks text{font-size:11px;fill:var(--muted);text-anchor:middle}
+.rpmbox{flex:none;padding:0 1.1rem 1rem}
+.rpmbox .val{font-size:1.5rem}
+.col-car{flex:1;min-width:0;display:flex;flex-direction:column;margin:0 .9rem}
+.carbox{flex:1;min-height:0;position:relative}
+.carbox svg{position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible}
+.ledcap{flex:none;align-self:center;display:flex;align-items:center;height:2.5rem;padding:0 1rem;border:1px solid var(--axis);border-radius:1.25rem;font-size:.9rem;color:var(--ink-2);margin-top:.3rem}
+.ledcap i{display:inline-block;vertical-align:middle;width:.8rem;height:.8rem;border-radius:50%;margin-right:.55rem;background:var(--muted)}
+.col-tiles{width:13.5rem;flex:none;display:flex;flex-direction:column}
+.tile{flex:1;padding:.6rem 1rem;display:flex;flex-direction:column;justify-content:center}
+.tile + .tile{margin-top:.6rem}
+.trip{flex:none;margin-top:.9rem;display:flex;align-items:center}
+.trip > div{flex:1;padding:.6rem 1rem}
+.trip > div + div{border-left:1px solid var(--line)}
+.trip .ttl{flex:none;width:6.5rem;color:var(--ink-2);font-size:.95rem}
+.trip .val{font-size:1.35rem}
+
+/* ---- dados */
+.meters{flex:1.9;min-width:0;padding:.3rem 1.1rem;display:flex;flex-direction:column}
+.mrow{flex:1;min-height:0;display:flex;align-items:center}
+.mrow + .mrow{border-top:1px solid var(--line)}
+.mrow .name{width:11rem;flex:none}
+.mrow .st{margin-top:.2rem}
+.mrow .bar{flex:1;margin:0 1.1rem;height:.5rem;border-radius:.25rem}
+.mrow .bar i{border-radius:.25rem}
+.mrow .fig{width:8rem;flex:none;text-align:right;font-size:1.45rem;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.mrow .fig small{font-size:.85rem;font-weight:400;color:var(--muted);margin-left:.3rem}
+.tripcard{flex:1;min-width:0;margin-left:.9rem;padding:1rem 1.1rem;display:flex;flex-direction:column}
+.tgrid{display:flex;flex-wrap:wrap}
+.tgrid > div{width:50%;margin-bottom:.8rem}
+.tripcard .val{font-size:1.5rem}
+.price{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding-top:.8rem}
+.stepper{display:flex}
+.stepper button{width:2.9rem;height:2.9rem;border:1px solid var(--axis);border-radius:.7rem;font-size:1.5rem;line-height:1;margin-left:.5rem}
+.cost{margin-top:.8rem}
+.btn{height:3rem;border:1px solid var(--axis);border-radius:.7rem;font-size:.95rem;margin-top:auto}
+
+/* ---- luzes */
+.ledcar{flex:1.1;min-width:0;display:flex;flex-direction:column}
+.note{flex:none;font-size:.85rem;color:var(--muted);text-align:center;padding:.2rem 1rem .1rem}
+.ledpanel{flex:1;min-width:0;margin-left:.9rem;padding:.8rem 1.1rem;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.grp{margin-top:.75rem}
+.grp:first-child{margin-top:0}
+.grp h3{font-size:.85rem;font-weight:400;color:var(--muted);margin-bottom:.35rem}
+.grp.row{display:flex;align-items:center;justify-content:space-between}
+.grp.row h3{margin-bottom:0}
+.grp .big{font-size:1.25rem;font-weight:600}
+.sw{display:flex;flex-wrap:wrap;margin:-.2rem}
+.sw button{width:2.6rem;height:2.6rem;border-radius:.65rem;margin:.2rem;border:1px solid rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center}
+.sw button svg{width:1.2rem;height:1.2rem;display:none;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.sw button.is-on{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--ink)}
+.sw button.is-on svg{display:block}
+.seg{display:flex;border:1px solid var(--axis);border-radius:.7rem;overflow:hidden}
+.seg button{flex:1;height:2.8rem;font-size:.9rem;color:var(--ink-2)}
+.seg button + button{border-left:1px solid var(--axis)}
+.seg button.is-on{background:var(--surface-2);color:var(--ink);box-shadow:inset 0 -.2rem 0 var(--accent)}
+.switch{width:3.8rem;height:2.1rem;border-radius:1.05rem;background:var(--axis);position:relative;flex:none}
+.switch:after{content:"";position:absolute;top:.2rem;left:.2rem;width:1.7rem;height:1.7rem;border-radius:50%;background:var(--ink);transition:transform .15s}
+.switch[aria-checked="true"]{background:var(--accent)}
+.switch[aria-checked="true"]:after{transform:translateX(1.7rem);background:#0d0d0d}
+input[type=range]{-webkit-appearance:none;appearance:none;display:block;width:100%;height:2.3rem;background:transparent}
+input[type=range]::-webkit-slider-runnable-track{height:.55rem;border-radius:.3rem;background:var(--axis)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:1.9rem;height:1.9rem;border-radius:50%;background:var(--ink);border:.2rem solid var(--surface);margin-top:-.68rem}
+input[type=range]::-moz-range-track{height:.55rem;border-radius:.3rem;background:var(--axis)}
+input[type=range]::-moz-range-thumb{width:1.5rem;height:1.5rem;border-radius:50%;background:var(--ink);border:.2rem solid var(--surface)}
+#hue::-webkit-slider-runnable-track{background:linear-gradient(90deg,hsl(0,100%,56%),hsl(60,100%,50%),hsl(120,100%,45%),hsl(180,100%,45%),hsl(240,100%,62%),hsl(300,100%,56%),hsl(359,100%,56%))}
+#hue::-moz-range-track{background:linear-gradient(90deg,hsl(0,100%,56%),hsl(60,100%,50%),hsl(120,100%,45%),hsl(180,100%,45%),hsl(240,100%,62%),hsl(300,100%,56%),hsl(359,100%,56%))}
+
+/* ---- aparelho */
+.facts{flex:1.35;min-width:0;padding:.3rem 1.1rem;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.facts .r{display:flex;justify-content:space-between;padding:.5rem 0;font-size:.95rem}
+.facts .r + .r{border-top:1px solid var(--line)}
+.facts .r span:first-child{color:var(--muted);flex:none}
+.facts .r span:last-child{text-align:right;margin-left:1rem}
+.verdict{flex:1;min-width:0;margin-left:.9rem;padding:1rem 1.1rem}
+.verdict p{font-size:.95rem;color:var(--ink-2);margin-top:.9rem;line-height:1.4}
+.verdict p.hint{color:var(--muted);font-size:.85rem;border-top:1px solid var(--line);padding-top:.8rem}
+
+/* ---- conectar */
+#view-conn{flex-direction:column}
+.conn{flex:1.2;min-height:0;display:flex}
+.ccard{flex:1;min-width:0;padding:.9rem 1.1rem;display:flex;flex-direction:column}
+.ccard + .ccard{margin-left:.9rem}
+.ccard h2{margin-bottom:.3rem}
+.cst{display:flex;align-items:center;font-size:.85rem;color:var(--ink-2)}
+.cst i{display:inline-block;width:.6rem;height:.6rem;border-radius:50%;background:var(--muted);margin-right:.45rem;flex:none}
+.ccard[data-state="on"] .cst i{background:var(--good)}
+.ccard[data-state="busy"] .cst i{background:var(--warn)}
+.ccard[data-state="err"] .cst i{background:var(--crit)}
+.cdesc{font-size:.85rem;color:var(--muted);line-height:1.35;margin-top:.55rem}
+.cval{font-size:.85rem;color:var(--ink-2);line-height:1.35;margin:.45rem 0 .5rem}
+.guide{flex:1;min-height:0;margin-top:.9rem;padding:.8rem 1.1rem;display:flex;flex-direction:column}
+.guide h2{margin-bottom:.5rem}
+.guide p{font-size:.92rem;color:var(--ink-2);line-height:1.4;margin-top:.6rem}
+.guide p.env{font-size:.85rem;color:var(--muted);margin-top:auto;padding-top:.5rem;border-top:1px solid var(--line)}
+
+.rotate{display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:9;background:var(--plane);align-items:center;justify-content:center;text-align:center;font-size:18px;padding:24px}
+@media (orientation:portrait) and (max-width:700px){.rotate{display:flex}}
+</style>
+</head>
+<body>
+<div id="app">
+  <nav class="rail" aria-label="Telas">
+    <button data-view="home" class="is-on"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 17l4.2-5.4"/></svg>Início</button>
+    <button data-view="data"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M4 12h16M4 17h7"/></svg>Dados</button>
+    <button data-view="led"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.6"/><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M5.6 18.4l1.7-1.7M16.7 7.3l1.7-1.7"/></svg>Luzes</button>
+    <button data-view="conn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg>Conectar</button>
+    <button data-view="device"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M9 20.5h6"/></svg>Aparelho</button>
+  </nav>
+
+  <div class="stage">
+    <header class="top">
+      <div class="brand">FAROL</div>
+      <div class="chip" id="chip"><i></i><span id="chipText">Dados simulados</span></div>
+      <div class="sp"></div>
+      <div class="clock"><b id="time">00:00</b><span id="date"></span></div>
+      <button class="icon" id="fs" aria-label="Tela cheia" title="Tela cheia"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+    </header>
+
+    <main>
+      <!-- INÍCIO -->
+      <section class="view is-on" id="view-home">
+        <div class="home-main">
+          <div class="col-speed card">
+            <div class="gaugebox">
+              <svg class="gauge" viewBox="0 0 300 300" role="img" aria-label="Velocímetro">
+                <path class="g-track" d="M65.15 234.85A120 120 0 1 1 234.85 234.85" fill="none" stroke-width="12" stroke-linecap="round"/>
+                <g id="ticks"></g>
+                <path class="g-arc" id="arc" d="M65.15 234.85A120 120 0 1 1 234.85 234.85" fill="none" stroke-width="12" stroke-linecap="round" stroke-dasharray="565.49" stroke-dashoffset="565.49" visibility="hidden"/>
+                <text class="hero" id="spd" x="150" y="176" text-anchor="middle">0</text>
+                <text class="unit" x="150" y="206" text-anchor="middle">km/h</text>
+              </svg>
+            </div>
+            <div class="rpmbox">
+              <div class="lbl">Rotação</div>
+              <div class="val"><span id="h-rpm">0</span><small>rpm</small></div>
+              <div class="bar"><i id="h-rpm-bar"></i></div>
+            </div>
+          </div>
+
+          <div class="col-car">
+            <div class="carbox" id="car-home"></div>
+            <button class="ledcap" id="ledcap" aria-label="Abrir as luzes"><i id="ledcap-dot"></i><span id="ledcap-txt"></span></button>
+          </div>
+
+          <div class="col-tiles">
+            <div class="tile card"><div class="lbl">Motor</div><div class="val"><span id="h-temp">—</span><small>°C</small></div><div class="st" id="h-temp-st"></div></div>
+            <div class="tile card"><div class="lbl">Bateria</div><div class="val"><span id="h-volt">—</span><small>V</small></div><div class="st" id="h-volt-st"></div></div>
+            <div class="tile card"><div class="lbl">Consumo agora</div><div class="val"><span id="h-kml">—</span><small>km/L</small></div><div class="bar"><i id="h-kml-bar"></i></div></div>
+          </div>
+        </div>
+
+        <div class="trip card">
+          <div class="ttl">Viagem atual</div>
+          <div><div class="lbl">Distância</div><div class="val"><span id="s-km">0,0</span><small>km</small></div></div>
+          <div><div class="lbl">Tempo</div><div class="val"><span id="s-time">0:00</span></div></div>
+          <div><div class="lbl">Média</div><div class="val"><span id="s-avg">0</span><small>km/h</small></div></div>
+          <div><div class="lbl">Consumo médio</div><div class="val"><span id="s-kml">—</span><small>km/L</small></div></div>
+          <div><div class="lbl">Custo</div><div class="val"><span id="s-cost">R$ 0,00</span></div></div>
+        </div>
+      </section>
+
+      <!-- DADOS -->
+      <section class="view" id="view-data">
+        <div class="meters card">
+          <div class="mrow"><div class="name">Rotação<div class="st" id="d-rpm-st"></div></div><div class="bar"><i id="d-rpm-bar"></i></div><div class="fig"><span id="d-rpm">0</span><small>rpm</small></div></div>
+          <div class="mrow"><div class="name">Temperatura do motor<div class="st" id="d-temp-st"></div></div><div class="bar"><i id="d-temp-bar"></i></div><div class="fig"><span id="d-temp">—</span><small>°C</small></div></div>
+          <div class="mrow"><div class="name">Bateria<div class="st" id="d-volt-st"></div></div><div class="bar"><i id="d-volt-bar"></i></div><div class="fig"><span id="d-volt">—</span><small>V</small></div></div>
+          <div class="mrow"><div class="name">Carga do motor</div><div class="bar"><i id="d-load-bar"></i></div><div class="fig"><span id="d-load">—</span><small>%</small></div></div>
+          <div class="mrow"><div class="name">Acelerador</div><div class="bar"><i id="d-thr-bar"></i></div><div class="fig"><span id="d-thr">—</span><small>%</small></div></div>
+          <div class="mrow"><div class="name">Consumo agora</div><div class="bar"><i id="d-kml-bar"></i></div><div class="fig"><span id="d-kml">—</span><small>km/L</small></div></div>
+        </div>
+        <div class="tripcard card">
+          <h2>Viagem atual</h2>
+          <div class="tgrid">
+            <div><div class="lbl">Distância</div><div class="val"><span id="t-km">0,0</span><small>km</small></div></div>
+            <div><div class="lbl">Tempo</div><div class="val"><span id="t-time">0:00</span></div></div>
+            <div><div class="lbl">Velocidade média</div><div class="val"><span id="t-avg">0</span><small>km/h</small></div></div>
+            <div><div class="lbl">Consumo médio</div><div class="val"><span id="t-kml">—</span><small>km/L</small></div></div>
+          </div>
+          <div class="price">
+            <div><div class="lbl">Preço do litro</div><div class="val"><span id="t-price">R$ 0,00</span></div></div>
+            <div class="stepper"><button id="p-dn" aria-label="Diminuir o preço do litro">−</button><button id="p-up" aria-label="Aumentar o preço do litro">+</button></div>
+          </div>
+          <div class="cost"><div class="lbl">Custo estimado</div><div class="val"><span id="t-cost">R$ 0,00</span></div></div>
+          <button class="btn" id="t-reset">Zerar viagem</button>
+        </div>
+      </section>
+
+      <!-- LUZES -->
+      <section class="view" id="view-led">
+        <div class="ledcar">
+          <div class="carbox" id="car-led"></div>
+          <p class="note" id="lednote"></p>
+        </div>
+        <div class="ledpanel card">
+          <div class="grp row"><div><h3>Luzes</h3><div class="big" id="ledstate">Ligadas</div></div><button class="switch" id="led-on" role="switch" aria-checked="true" aria-label="Ligar ou desligar as luzes"></button></div>
+          <div class="grp"><h3>Cor</h3><div class="sw" id="led-sw"></div></div>
+          <div class="grp"><h3>Tom personalizado</h3><input type="range" id="hue" min="0" max="359" step="1" aria-label="Tom personalizado"></div>
+          <div class="grp"><h3>Brilho <span id="bri-v"></span></h3><input type="range" id="bri" min="5" max="100" step="5" aria-label="Brilho"></div>
+          <div class="grp"><h3>Efeito</h3><div class="seg" id="fx"><button data-fx="fixo">Fixo</button><button data-fx="respirar">Respirar</button><button data-fx="arco">Arco-íris</button><button data-fx="ritmo">Ritmo</button></div></div>
+          <div class="grp"><h3>Pintura do carro</h3><div class="sw" id="paint-sw"></div></div>
+        </div>
+      </section>
+
+      <!-- CONECTAR -->
+      <section class="view" id="view-conn">
+        <div class="conn">
+          <div class="ccard card" id="c-obd" data-state="off">
+            <h2>Scanner OBD2</h2>
+            <div class="cst"><i></i><span>Desconectado</span></div>
+            <p class="cdesc">Velocidade, rotação, temperatura, bateria e consumo vindos do carro. O scanner precisa ser Bluetooth 4.0 (BLE).</p>
+            <div class="cval"></div>
+            <button class="btn">Conectar scanner</button>
+          </div>
+          <div class="ccard card" id="c-led" data-state="off">
+            <h2>Fita de LED</h2>
+            <div class="cst"><i></i><span>Desconectada</span></div>
+            <p class="cdesc">Fitas Bluetooth dos apps duoCo Strip, Lotus Lantern e HappyLighting. A cor segue a tela Luzes.</p>
+            <div class="cval"></div>
+            <button class="btn">Conectar LED</button>
+          </div>
+          <div class="ccard card" id="c-gps" data-state="off">
+            <h2>GPS</h2>
+            <div class="cst"><i></i><span>Desligado</span></div>
+            <p class="cdesc">Velocidade e distância pelo GPS do aparelho. Usado quando não há scanner.</p>
+            <div class="cval"></div>
+            <button class="btn">Usar GPS</button>
+          </div>
+        </div>
+        <div class="guide card">
+          <h2>Sua multimídia</h2>
+          <div class="seg" id="g-type"><button data-g="android">Android</button><button data-g="espelho">Espelha o celular</button><button data-g="auto">Android Auto / CarPlay</button><button data-g="nenhuma">Sem tela compatível</button></div>
+          <p id="g-text"></p>
+          <p class="env" id="c-env">As conexões não carregaram neste navegador.</p>
+        </div>
+      </section>
+
+      <!-- APARELHO -->
+      <section class="view" id="view-device">
+        <div class="facts card" id="facts"></div>
+        <div class="verdict card">
+          <h2>Teste deste aparelho</h2>
+          <div class="lbl">Fluidez da tela</div>
+          <div class="val"><span id="fps">—</span><small>quadros por segundo</small></div>
+          <div class="st" id="fps-st"></div>
+          <p id="verdict"></p>
+          <p class="hint">Abra esta tela na multimídia e tire uma foto. Com esses dados dá para saber o que o aparelho aguenta.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+<div class="rotate"><div>Vire a tela para a horizontal<br>para usar o painel.</div></div>
+
+<script>
+/* FAROL — painel do carro (protótipo).
+   Os dados entram por um único ponto:  FAROL.feed({speed, rpm, temp, volt, load, thr, flow})
+     speed km/h · rpm · temp °C · volt V · load % · thr % · flow L/h   (o que faltar fica "—")
+   Hoje quem chama é o simulador. No app Android, quem chama é a leitura do scanner OBD2 / GPS.
+   As luzes saem por  FarolNative.setLed(r, g, b, brilho%)  quando o app existir.
+   JavaScript em ES5 de propósito, para rodar em WebView antigo. */
+(function () {
+  'use strict';
+  var doc = document, root = doc.documentElement, win = window;
+  var el = {}, prev = {};
+  function $(id) { return el[id] || (el[id] = doc.getElementById(id)); }
+  function clamp(x, a, b) { return x < a ? a : x > b ? b : x; }
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function fmt(n, d) { // número no padrão brasileiro
+    if (n === null || n === undefined || !isFinite(n)) return '—';
+    var f = Number(n).toFixed(d || 0), neg = f.charAt(0) === '-' && Number(f) !== 0, p = f.replace('-', '').split('.');
+    p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return (neg ? '-' : '') + p[0] + (p[1] ? ',' + p[1] : '');
+  }
+  function setText(id, s) { if (prev[id] !== s) { prev[id] = s; $(id).textContent = s; } }
+  function setBar(id, f) {
+    f = clamp(f || 0, 0, 1);
+    var s = (f * 100 - 100).toFixed(1);
+    if (prev[id] !== s) { prev[id] = s; $(id).style.transform = 'translateX(' + s + '%)'; }
+  }
+  function setCls(id, c) { var k = id + '#c'; if (prev[k] !== c) { prev[k] = c; $(id).className = c; } }
+
+  // ---------- escala: tudo em rem, 1rem = 16px numa tela de 1024×600
+  function fit() {
+    var s = Math.min(win.innerWidth / 1024, win.innerHeight / 600);
+    root.style.fontSize = (16 * clamp(s, 0.45, 3)).toFixed(2) + 'px';
+  }
+  win.addEventListener('resize', fit);
+  fit();
+
+  // ---------- preferências salvas no aparelho
+  var KEY = 'farol.v1';
+  var cfg = { on: true, h: 220, s: 100, name: 'Azul', b: 80, fx: 'fixo', paint: '#3b3f46', price: 6.29 };
+  try {
+    var saved = JSON.parse(localStorage.getItem(KEY) || '{}');
+    for (var key in cfg) if (cfg.hasOwnProperty(key) && typeof saved[key] === typeof cfg[key]) cfg[key] = saved[key];
+  } catch (e) {}
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} }
+
+  // ---------- cor
+  function hsl2rgb(h, s, l) {
+    s /= 100; l /= 100;
+    var c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2, r = 0, g = 0, b = 0;
+    if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; } else if (h < 180) { g = c; b = x; }
+    else if (h < 240) { g = x; b = c; } else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+    return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+  }
+  function lin(v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+  function lum(c) { return 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]); }
+  var SURF = lum([26, 26, 25]);
+  // cor de destaque da tela: mesmo tom da luz, clareado até dar contraste 4:1 no fundo
+  function accentOf(h, s) {
+    if (s < 15) return 'hsl(' + h + ',' + s + '%,84%)';
+    for (var l = 56; l < 86; l += 2) if ((lum(hsl2rgb(h, s, l)) + 0.05) / (SURF + 0.05) >= 4) break;
+    return 'hsl(' + h + ',' + s + '%,' + l + '%)';
+  }
+  function ledCss(h, s) { return 'hsl(' + Math.round(h) + ',' + s + '%,' + (s < 15 ? 90 : 56) + '%)'; }
+
+  // ---------- desenho do carro (visto de cima; frente para a direita, ou para cima se "vertical")
+  function carSVG(k, vertical) {
+    var B = 'M62 150L62 108C62 82 76 68 104 66C160 61 220 60 290 60C350 60 400 62 436 68C472 74 494 96 498 130Q503 150 498 170C494 204 472 226 436 232C400 238 350 240 290 240C220 240 160 239 104 234C76 232 62 218 62 192Z';
+    var G = 'M334 90L378 76Q396 150 378 224L334 210Q340 150 334 90Z' +
+            'M216 90L170 78Q154 150 170 222L216 210Q210 150 216 90Z' +
+            'M176 75L372 73L336 87L214 87ZM176 225L372 227L336 213L214 213Z';
+    var R = 'M216 90L334 90Q340 150 334 210L216 210Q210 150 216 90Z';
+    return [
+      '<svg viewBox="', vertical ? '0 0 300 560' : '0 0 560 300', '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Seu carro visto de cima, com as luzes na cor escolhida">',
+      '<defs>',
+      '<radialGradient id="gl', k, '"><stop class="gs" offset=".3" stop-opacity=".95"/><stop class="gs" offset=".55" stop-opacity=".55"/><stop class="gs" offset=".8" stop-opacity=".16"/><stop class="gs" offset="1" stop-opacity="0"/></radialGradient>',
+      '<linearGradient id="sh', k, '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".55"/><stop offset=".2" stop-color="#000" stop-opacity=".12"/><stop offset=".5" stop-color="#fff" stop-opacity=".12"/><stop offset=".8" stop-color="#000" stop-opacity=".12"/><stop offset="1" stop-color="#000" stop-opacity=".55"/></linearGradient>',
+      '<linearGradient id="en', k, '" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".4"/><stop offset=".14" stop-color="#000" stop-opacity="0"/><stop offset=".86" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".3"/></linearGradient>',
+      '</defs>',
+      vertical ? '<g transform="translate(0 560) rotate(-90)">' : '<g>',
+      '<ellipse class="glow" cx="280" cy="150" rx="300" ry="215" fill="url(#gl', k, ')"/>',
+      '<g fill="#070708"><rect x="116" y="59.5" width="58" height="14" rx="6"/><rect x="384" y="61" width="58" height="14" rx="6"/><rect x="116" y="226.5" width="58" height="14" rx="6"/><rect x="384" y="225" width="58" height="14" rx="6"/></g>',
+      '<g class="paint"><path d="M350 63L346 49Q356 43 368 50L364 64Z"/><path d="M350 237L346 251Q356 257 368 250L364 236Z"/><path d="', B, '"/></g>',
+      '<path d="', B, '" fill="url(#sh', k, ')"/><path d="', B, '" fill="url(#en', k, ')"/>',
+      '<path d="M398 110Q452 114 488 126M398 190Q452 186 488 174M104 90Q98 150 104 210M272 61L272 74M272 226L272 239M206 61L208 75M206 239L208 225" fill="none" stroke="#000" stroke-opacity=".32" stroke-width="1.4"/>',
+      '<path d="', G, '" fill="#0a0e15"/>',
+      '<path class="cabin" d="', G, '" fill-opacity=".3"/>',
+      '<g class="paint"><path d="', R, '"/><rect x="269.5" y="73" width="5" height="15"/><rect x="269.5" y="212" width="5" height="15"/></g>',
+      '<path d="', R, '" fill="#fff" fill-opacity=".07"/>',
+      '<path d="M456 79Q478 84 489 110L480 113Q472 95 452 88ZM456 221Q478 216 489 190L480 187Q472 205 452 212Z" fill="#eef3ff"/>',
+      '<path d="M66 118L66 104Q67 86 82 75L88 80Q75 90 74 106L74 118ZM66 182L66 196Q67 214 82 225L88 220Q75 210 74 194L74 182Z" fill="#e5484d"/>',
+      '<path d="', B, '" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="1.2"/>',
+      '</g></svg>'
+    ].join('');
+  }
+  var cars = [];
+  (function () {
+    var ids = ['car-home', 'car-led'], i, box;
+    for (i = 0; i < ids.length; i++) {
+      box = $(ids[i]);
+      box.innerHTML = carSVG(i, i === 0);
+      cars.push({ stops: box.querySelectorAll('.gs'), glow: box.querySelector('.glow'), cabin: box.querySelector('.cabin'), paints: box.querySelectorAll('.paint') });
+    }
+  })();
+
+  // ---------- luzes
+  var LEDS = [['Branco', 0, 0], ['Vermelho', 0, 100], ['Laranja', 24, 100], ['Verde', 130, 100], ['Ciano', 185, 100], ['Azul', 220, 100], ['Roxo', 270, 100], ['Rosa', 325, 100]];
+  var PAINTS = [['Preto', '#1b1d21'], ['Grafite', '#3b3f46'], ['Prata', '#b4b9c1'], ['Branco', '#e9ebee'], ['Vermelho', '#9e1b20'], ['Azul', '#1f3f8a']];
+  var FX = { fixo: 'Fixo', respirar: 'Respirar', arco: 'Arco-íris', ritmo: 'Ritmo' };
+  var CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  var ledPrev = { c: '', a: -1 }, ledDirty = true, emitT = 0, emitPrev = '';
+
+  function applyLed(h, s, a) {
+    var c = ledCss(h, s), i, j;
+    a = Math.round(a * 100) / 100;
+    if (c !== ledPrev.c) {
+      ledPrev.c = c;
+      for (i = 0; i < cars.length; i++) {
+        for (j = 0; j < cars[i].stops.length; j++) cars[i].stops[j].setAttribute('stop-color', c);
+        cars[i].cabin.setAttribute('fill', c);
+      }
+    }
+    if (a !== ledPrev.a) {
+      ledPrev.a = a;
+      for (i = 0; i < cars.length; i++) { cars[i].glow.setAttribute('opacity', a); cars[i].cabin.setAttribute('opacity', a); }
+    }
+  }
+  // Manda para as luzes de verdade, quando o app Android estiver por baixo (no máximo 10 vezes por segundo).
+  // Devolve true se ficou devendo um envio, para tentar de novo no próximo quadro.
+  function emitLed(h, s, a, ts) {
+    var n = (win.FAROL && win.FAROL.ledSink) || win.FarolNative;
+    if (!n || !n.setLed) return false;
+    var c = hsl2rgb(h, s, s < 15 ? 100 : 50), k = c.join(',') + ',' + Math.round(a * 100);
+    if (k === emitPrev) return false;
+    if (ts - emitT < 100) return true;
+    emitPrev = k; emitT = ts;
+    try { n.setLed(c[0], c[1], c[2], Math.round(a * 100)); } catch (e) {}
+    return false;
+  }
+  function ledFrame(ts) {
+    var t = ts / 1000, h = cfg.h, s = cfg.s, a = cfg.b / 100;
+    if (cfg.fx === 'respirar') a *= 0.3 + 0.7 * (0.5 - 0.5 * Math.cos(t * Math.PI / 2));
+    else if (cfg.fx === 'arco') { h = (t * 30) % 360; s = 100; }
+    else if (cfg.fx === 'ritmo') a *= 0.25 + 0.75 * clamp(((shown.rpm || 0) - 800) / 3400, 0, 1);
+    if (!cfg.on) a = 0;
+    applyLed(h, s, a);
+    ledDirty = emitLed(h, s, a, ts);
+  }
+  function applyPaint() {
+    for (var i = 0; i < cars.length; i++) for (var j = 0; j < cars[i].paints.length; j++) cars[i].paints[j].setAttribute('fill', cfg.paint);
+  }
+  function swatches(boxId, what, list, css, onPick) {
+    var box = $(boxId), i, b;
+    for (i = 0; i < list.length; i++) {
+      b = doc.createElement('button');
+      b.style.background = css(list[i]);
+      b.title = list[i][0];
+      b.setAttribute('aria-label', what + ': ' + list[i][0]);
+      b.innerHTML = CHECK;
+      b.onclick = (function (it) { return function () { onPick(it); syncLed(); }; })(list[i]);
+      box.appendChild(b);
+    }
+  }
+  function markSwatches(boxId, isOn, dark) {
+    var bs = $(boxId).children, i, on;
+    for (i = 0; i < bs.length; i++) {
+      on = isOn(i);
+      bs[i].classList.toggle('is-on', on);
+      bs[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+      bs[i].firstChild.style.stroke = dark(i) ? '#0d0d0d' : '#fff';
+    }
+  }
+  function syncLed() {
+    root.style.setProperty('--accent', accentOf(cfg.h, cfg.s));
+    markSwatches('led-sw', function (i) { return LEDS[i][0] === cfg.name && LEDS[i][1] === cfg.h && LEDS[i][2] === cfg.s; },
+      function (i) { return LEDS[i][2] < 15 || (LEDS[i][1] > 40 && LEDS[i][1] < 200); });
+    markSwatches('paint-sw', function (i) { return PAINTS[i][1] === cfg.paint; }, function (i) { return i === 2 || i === 3; });
+    var fx = $('fx').children, i;
+    for (i = 0; i < fx.length; i++) {
+      fx[i].classList.toggle('is-on', fx[i].getAttribute('data-fx') === cfg.fx);
+      fx[i].setAttribute('aria-pressed', fx[i].getAttribute('data-fx') === cfg.fx ? 'true' : 'false');
+    }
+    $('led-on').setAttribute('aria-checked', cfg.on ? 'true' : 'false');
+    $('ledstate').textContent = cfg.on ? 'Ligadas' : 'Desligadas';
+    $('hue').value = cfg.h;
+    $('bri').value = cfg.b;
+    $('bri-v').textContent = '· ' + cfg.b + '%';
+    $('ledcap-dot').style.background = cfg.on ? ledCss(cfg.h, cfg.s) : '';
+    $('ledcap-txt').textContent = cfg.on ? 'Luzes: ' + cfg.name + ' · ' + cfg.b + '% · ' + FX[cfg.fx] : 'Luzes desligadas';
+    $('lednote').textContent = ((win.FAROL && win.FAROL.ledSink) || win.FarolNative)
+      ? 'A cor escolhida é enviada para a fita de LED.'
+      : 'A cor aparece só aqui na tela. Para mudar a fita de LED de verdade, conecte-a na tela Conectar.';
+    applyPaint();
+    ledDirty = true;
+    save();
+  }
+  swatches('led-sw', 'Luz', LEDS, function (it) { return ledCss(it[1], it[2]); }, function (it) { cfg.name = it[0]; cfg.h = it[1]; cfg.s = it[2]; cfg.on = true; });
+  swatches('paint-sw', 'Pintura', PAINTS, function (it) { return it[1]; }, function (it) { cfg.paint = it[1]; });
+  $('hue').addEventListener('input', function () { cfg.h = Number(this.value); cfg.s = 100; cfg.name = 'Personalizada'; cfg.on = true; syncLed(); });
+  $('bri').addEventListener('input', function () { cfg.b = Number(this.value); syncLed(); });
+  $('led-on').onclick = function () { cfg.on = !cfg.on; syncLed(); };
+  $('fx').onclick = function (e) { var f = e.target.getAttribute('data-fx'); if (f) { cfg.fx = f; syncLed(); } };
+  $('ledcap').onclick = function () { show('led'); };
+
+  // ---------- telas
+  function show(v) {
+    var bs = doc.querySelectorAll('.rail button'), i, on;
+    for (i = 0; i < bs.length; i++) {
+      on = bs[i].getAttribute('data-view') === v;
+      bs[i].classList.toggle('is-on', on);
+      if (on) bs[i].setAttribute('aria-current', 'page'); else bs[i].removeAttribute('aria-current');
+      $('view-' + bs[i].getAttribute('data-view')).classList.toggle('is-on', on);
+    }
+    if (v === 'device') facts();
+  }
+  doc.querySelector('.rail').onclick = function (e) {
+    var t = e.target;
+    while (t && t !== this && !t.getAttribute('data-view')) t = t.parentNode;
+    if (t && t !== this) show(t.getAttribute('data-view'));
+  };
+  $('fs').onclick = function () {
+    var on = doc.fullscreenElement || doc.webkitFullscreenElement, f;
+    if (on) { f = doc.exitFullscreen || doc.webkitExitFullscreen; if (f) f.call(doc); }
+    else { f = root.requestFullscreen || root.webkitRequestFullscreen; if (f) f.call(root); }
+  };
+
+  // ---------- relógio
+  var DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'], MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  function clock() {
+    var d = new Date();
+    setText('time', pad(d.getHours()) + ':' + pad(d.getMinutes()));
+    setText('date', DIAS[d.getDay()] + ', ' + d.getDate() + ' ' + MESES[d.getMonth()]);
+  }
+  setInterval(clock, 5000);
+  clock();
+
+  // ---------- dados do carro
+  var car = { speed: 0, rpm: 0, temp: null, volt: null, load: null, thr: null, flow: null };
+  var shown = { speed: 0, rpm: 0, temp: null, volt: null, load: null, thr: null, flow: null };
+  var trip = { km: 0, s: 0, l: 0 }, lastFeed = 0, source = 'sim', simTimer = 0;
+
+  var links = { obd: false, gps: false };
+  function chip() {
+    var carOn = links.obd || (source === 'car' && !links.gps);
+    $('chip').className = carOn || links.gps ? 'chip live' : 'chip';
+    $('chipText').textContent = carOn ? 'Carro conectado' : links.gps ? 'GPS ativo' : source === 'sim' ? 'Dados simulados' : 'Aguardando o carro';
+  }
+  function link(name, on) { // uma fonte de dados de verdade entrou ou saiu
+    links[name] = !!on;
+    if (!on && name === 'obd') {
+      car.rpm = 0; car.temp = car.volt = car.load = car.thr = car.flow = null;
+      if (!links.gps) car.speed = 0;
+    }
+    if (!on && name === 'gps' && !links.obd) car.speed = 0;
+    if (!links.obd && !links.gps && source === 'car') source = 'wait';
+    chip();
+  }
+  function feed(d, fromSim) {
+    var now = Date.now(), dt = lastFeed ? (now - lastFeed) / 1000 : 0, k;
+    lastFeed = now;
+    if (!d) return;
+    if (!fromSim && source !== 'car') { // chegou dado de verdade: sai o simulador
+      source = 'car'; clearInterval(simTimer);
+      for (k in car) car[k] = null;
+      trip.km = trip.s = trip.l = 0; dt = 0;
+      chip();
+    }
+    for (k in car) if (d.hasOwnProperty(k)) car[k] = (typeof d[k] === 'number' && isFinite(d[k])) ? d[k] : null;
+    if (car.speed === null) car.speed = 0;
+    if (car.rpm === null) car.rpm = 0;
+    if (dt > 0 && dt < 3) {
+      trip.s += dt;
+      trip.km += car.speed * dt / 3600;
+      if (car.flow !== null) trip.l += car.flow * dt / 3600;
+    }
+  }
+
+  // ---------- simulador: um percurso de cidade + estrada que se repete
+  var SCRIPT = [[0, 3], [42, 10], [58, 9], [35, 6], [0, 6], [0, 3], [64, 12], [88, 14], [110, 13], [96, 8], [72, 8], [50, 7], [28, 6], [0, 7]];
+  var RATIO = [0, 118, 68, 46, 35, 28]; // rpm por km/h em cada marcha
+  var sim = { i: 0, left: SCRIPT[0][1], v: 0, gear: 1, shift: 0, rpm: 850, temp: 38, t: 0, last: 0 };
+  function simStep(dt) {
+    sim.t += dt; sim.left -= dt;
+    if (sim.left <= 0) { sim.i = (sim.i + 1) % SCRIPT.length; sim.left = SCRIPT[sim.i][1]; }
+    var target = SCRIPT[sim.i][0], dv = target - sim.v, a, g, k, lo, rpmT, thr, load, flow, volt;
+    a = dv > 0 ? Math.min(dv * 0.9, 9.5 * (1 - sim.v / 210) + 0.6) : Math.max(dv * 1.1, -13); // km/h por segundo
+    sim.v = Math.max(0, sim.v + a * dt);
+    if (sim.v < 4) { sim.gear = 1; }
+    else {
+      lo = a > 5 ? 2300 : a > 1.5 ? 1700 : 1350;
+      g = 1;
+      for (k = 5; k >= 1; k--) if (sim.v * RATIO[k] >= lo) { g = k; break; }
+      if (sim.v * RATIO[sim.gear] > 5200 && g < sim.gear + 1) g = Math.min(5, sim.gear + 1);
+      if (g !== sim.gear && sim.t - sim.shift > 1.2) { sim.gear = g; sim.shift = sim.t; }
+    }
+    rpmT = sim.v < 4 ? 850 : Math.max(900, sim.v * RATIO[sim.gear]);
+    sim.rpm += (rpmT - sim.rpm) * Math.min(1, dt / 0.22);
+    thr = a > 0.15 ? clamp(10 + a * 8 + sim.v * 0.1, 0, 100) : a < -0.5 ? 0 : clamp(8 + sim.v * 0.2, 0, 45);
+    if (sim.v < 1 && target === 0) thr = 0;
+    load = sim.v < 1 ? 22 : clamp(16 + thr * 0.8, 0, 100);
+    flow = sim.v < 1 ? 0.9 : thr === 0 ? 0.25 : 0.9 + (load / 100) * (sim.rpm / 1000) * 4.8;
+    sim.temp += (90 + 2.5 * Math.sin(sim.t / 19) - sim.temp) * Math.min(1, dt / 40);
+    volt = 14.05 + 0.12 * Math.sin(sim.t / 7) - (load > 70 ? 0.12 : 0) - (sim.v < 1 ? 0.15 : 0);
+    feed({ speed: sim.v, rpm: sim.rpm, temp: sim.temp, volt: volt, load: load, thr: thr, flow: flow }, true);
+  }
+  function startSim() {
+    source = 'sim'; sim.last = Date.now();
+    simTimer = setInterval(function () {
+      var now = Date.now(), dt = clamp((now - sim.last) / 1000, 0, 0.5);
+      sim.last = now;
+      simStep(dt);
+    }, 100);
+  }
+
+  // ---------- estados (ícone + palavra)
+  var ICON = {
+    good: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7"/><path d="M4.8 8.3l2.2 2.2 4.2-4.6" fill="none" stroke="#1a1a19" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    warn: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.3l7.2 13H.8z"/><path d="M8 6.2v3.9M8 12v.3" fill="none" stroke="#1a1a19" stroke-width="1.7" stroke-linecap="round"/></svg>',
+    crit: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .8l7.2 7.2L8 15.2.8 8z"/><path d="M8 4.6v4M8 10.9v.4" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>',
+    info: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3.6"/></svg>'
+  };
+  function setSt(id, st) {
+    var k = st[0] + st[1];
+    if (prev[id] === k) return;
+    prev[id] = k;
+    $(id).className = 'st ' + st[0];
+    $(id).innerHTML = ICON[st[0]] + st[1];
+  }
+  var NODATA = ['info', 'Sem dado'];
+  function stRpm(r) { return r >= 6000 ? ['crit', 'Muito alta'] : r >= 4500 ? ['warn', 'Alta'] : ['good', 'Normal']; }
+  function stTemp(t) { return t === null ? NODATA : t < 70 ? ['info', 'Aquecendo'] : t < 105 ? ['good', 'Normal'] : ['crit', 'Alta demais']; }
+  function stVolt(v) { return v === null ? NODATA : v < 12.2 ? ['warn', 'Baixa'] : v > 14.9 ? ['warn', 'Alta'] : ['good', 'Normal']; }
+  function sev(st) { return st[0] === 'warn' || st[0] === 'crit' ? st[0] : ''; }
+
+  function fmtTime(s) {
+    s = Math.floor(s);
+    var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60;
+    return h > 0 ? h + ':' + pad(m) + ':' + pad(ss) : m + ':' + pad(ss);
+  }
+  function money(v) { return 'R$ ' + fmt(v, 2); }
+
+  // ---------- desenho: ponteiro a cada quadro, números ~8 vezes por segundo (para dar para ler)
+  var ARC = 565.49;
+  function ease(k, dt, tau) {
+    var a = car[k];
+    if (a === null) { shown[k] = null; return; }
+    if (shown[k] === null || dt <= 0) { shown[k] = a; return; }
+    shown[k] += (a - shown[k]) * (1 - Math.exp(-dt / tau));
+  }
+  function slow() {
+    var r = shown.rpm || 0, st, kml, kmlTxt, avg, tk;
+    r = Math.round(r / 10) * 10;
+    st = stRpm(r);
+    setText('h-rpm', fmt(r, 0)); setText('d-rpm', fmt(r, 0));
+    setBar('h-rpm-bar', r / 7000); setBar('d-rpm-bar', r / 7000);
+    setCls('h-rpm-bar', sev(st)); setCls('d-rpm-bar', sev(st)); setSt('d-rpm-st', st);
+
+    st = stTemp(shown.temp);
+    setText('h-temp', fmt(shown.temp, 0)); setText('d-temp', fmt(shown.temp, 0));
+    setBar('d-temp-bar', shown.temp === null ? 0 : (shown.temp - 40) / 80);
+    setCls('d-temp-bar', sev(st)); setSt('h-temp-st', st); setSt('d-temp-st', st);
+
+    st = stVolt(shown.volt);
+    setText('h-volt', fmt(shown.volt, 1)); setText('d-volt', fmt(shown.volt, 1));
+    setBar('d-volt-bar', shown.volt === null ? 0 : (shown.volt - 11) / 4);
+    setCls('d-volt-bar', sev(st)); setSt('h-volt-st', st); setSt('d-volt-st', st);
+
+    setText('d-load', fmt(shown.load, 0)); setBar('d-load-bar', shown.load === null ? 0 : shown.load / 100);
+    setText('d-thr', fmt(shown.thr, 0)); setBar('d-thr-bar', shown.thr === null ? 0 : shown.thr / 100);
+
+    kml = shown.flow !== null && shown.flow > 0 && shown.speed > 3 ? shown.speed / shown.flow : null;
+    kmlTxt = kml === null ? '—' : kml > 30 ? '30+' : fmt(kml, 1);
+    setText('h-kml', kmlTxt); setText('d-kml', kmlTxt);
+    setBar('h-kml-bar', kml === null ? 0 : kml / 30); setBar('d-kml-bar', kml === null ? 0 : kml / 30);
+
+    avg = trip.s > 3 ? trip.km / (trip.s / 3600) : 0;
+    tk = trip.l > 0.005 ? fmt(trip.km / trip.l, 1) : '—';
+    setText('s-km', fmt(trip.km, 1)); setText('t-km', fmt(trip.km, 1));
+    setText('s-time', fmtTime(trip.s)); setText('t-time', fmtTime(trip.s));
+    setText('s-avg', fmt(avg, 0)); setText('t-avg', fmt(avg, 0));
+    setText('s-kml', tk); setText('t-kml', tk);
+    setText('s-cost', money(trip.l * cfg.price)); setText('t-cost', money(trip.l * cfg.price));
+    setText('t-price', money(cfg.price));
+  }
+  var lastT = 0, slowT = 0, ledT = 0, fpsN = 0, fpsT = 0;
+  function frame(ts) {
+    var dt = lastT ? Math.min(0.25, (ts - lastT) / 1000) : 0, v, off, fps;
+    lastT = ts;
+    ease('speed', dt, 0.16); ease('rpm', dt, 0.14);
+    ease('temp', dt, 0.4); ease('volt', dt, 0.4); ease('load', dt, 0.25); ease('thr', dt, 0.2); ease('flow', dt, 0.35);
+
+    v = shown.speed || 0;
+    setText('spd', String(Math.round(v)));
+    off = (ARC * (1 - clamp(v / 200, 0, 1))).toFixed(1);
+    if (prev.arc !== off) {
+      prev.arc = off;
+      $('arc').setAttribute('stroke-dashoffset', off);
+      $('arc').setAttribute('visibility', v < 0.5 ? 'hidden' : 'visible');
+    }
+    if (ts - slowT > 120) { slowT = ts; slow(); }
+    if (ledDirty || (cfg.on && cfg.fx !== 'fixo' && ts - ledT > 33)) { ledT = ts; ledFrame(ts); }
+
+    fpsN++;
+    if (!fpsT) fpsT = ts;
+    if (ts - fpsT >= 1000) {
+      fps = Math.round(fpsN * 1000 / (ts - fpsT));
+      fpsN = 0; fpsT = ts;
+      setText('fps', String(fps));
+      setSt('fps-st', fps >= 50 ? ['good', 'Fluida'] : fps >= 28 ? ['info', 'Aceitável'] : ['warn', 'Pesada para este aparelho']);
+    }
+    win.requestAnimationFrame(frame);
+  }
+
+  // ---------- marcações do velocímetro
+  (function () {
+    var s = '', k, ang, c, sn;
+    for (k = 0; k <= 10; k++) {
+      ang = (135 + 27 * k) * Math.PI / 180; c = Math.cos(ang); sn = Math.sin(ang);
+      s += '<line x1="' + (150 + 101 * c).toFixed(1) + '" y1="' + (150 + 101 * sn).toFixed(1) + '" x2="' + (150 + 108 * c).toFixed(1) + '" y2="' + (150 + 108 * sn).toFixed(1) + '"/>';
+      if (k % 2 === 0) s += '<text x="' + (150 + 87 * c).toFixed(1) + '" y="' + (150 + 87 * sn).toFixed(1) + '" dy=".35em">' + (k * 20) + '</text>';
+    }
+    $('ticks').innerHTML = s;
+  })();
+
+  // ---------- viagem
+  $('p-dn').onclick = function () { cfg.price = clamp(Math.round((cfg.price - 0.1) * 100) / 100, 1, 20); save(); slow(); };
+  $('p-up').onclick = function () { cfg.price = clamp(Math.round((cfg.price + 0.1) * 100) / 100, 1, 20); save(); slow(); };
+  $('t-reset').onclick = function () { trip.km = trip.s = trip.l = 0; slow(); };
+
+  // ---------- tela "Aparelho": o que esta multimídia é e aguenta
+  function facts() {
+    var ua = navigator.userAgent, rows = [], m, i, html = '', v;
+    var and = /Android\s+([\d.]+)/.exec(ua), chr = /(?:Chrome|CriOS)\/(\d+)/.exec(ua);
+    var wv = /; wv\)/.test(ua) || /Version\/[\d.]+ Chrome\//.test(ua), maj = chr ? parseInt(chr[1], 10) : 0;
+    var hidden = and && /Android 10; K\)/.test(ua); // Chrome novo esconde versão e modelo
+    var sys = and ? (hidden ? 'Android (versão oculta pelo navegador)' : 'Android ' + and[1])
+      : /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : 'Não identificado';
+    var model = '';
+    if (and && !hidden) { m = /Android\s+[\d.]+;\s*([^;)]+)/.exec(ua); if (m) model = m[1].replace(/\s*Build\/.*$/, ''); }
+    if (model === 'wv') model = '';
+    var dpr = win.devicePixelRatio || 1, tp = navigator.maxTouchPoints || 0, sec = win.isSecureContext === true;
+    rows.push(['Sistema', sys]);
+    rows.push(['Modelo', model || 'Não informado']);
+    rows.push(['Navegador', maj ? (wv ? 'WebView (Chrome ' + maj + ')' : 'Chrome ' + maj) : 'Outro']);
+    rows.push(['Tela', screen.width + ' × ' + screen.height + ' · densidade ' + fmt(dpr, dpr % 1 ? 2 : 0)]);
+    rows.push(['Área do painel', win.innerWidth + ' × ' + win.innerHeight]);
+    rows.push(['Toque', tp > 0 ? 'Sim, ' + tp + (tp === 1 ? ' ponto' : ' pontos') : 'Não detectado']);
+    rows.push(['Processador', navigator.hardwareConcurrency ? navigator.hardwareConcurrency + ' núcleos' : 'Não informado']);
+    rows.push(['Memória', navigator.deviceMemory ? '≈ ' + String(navigator.deviceMemory).replace('.', ',') + ' GB' : 'Não informada']);
+    rows.push(['Página segura (HTTPS)', sec ? 'Sim' : 'Não']);
+    rows.push(['GPS pelo navegador', !navigator.geolocation ? 'Indisponível' : sec ? 'Disponível' : 'Bloqueado sem HTTPS']);
+    rows.push(['Bluetooth pelo navegador', navigator.bluetooth ? 'Disponível' : 'Indisponível']);
+    rows.push(['Ligação com o carro', win.FarolNative ? 'App instalado' : 'Ainda não, só navegador']);
+    for (i = 0; i < rows.length; i++) html += '<div class="r"><span>' + esc(rows[i][0]) + '</span><span>' + esc(rows[i][1]) + '</span></div>';
+    $('facts').innerHTML = html;
+    if (!maj) v = 'Navegador não reconhecido. O painel pode funcionar, mas vale conferir cada tela.';
+    else if (maj >= 80) v = 'Navegador atual (versão ' + maj + '). O painel roda completo aqui.';
+    else if (maj >= 60) v = 'Navegador mais antigo (versão ' + maj + '). O painel funciona; alguns efeitos podem ser simplificados.';
+    else v = 'Navegador muito antigo (versão ' + maj + '). Talvez seja preciso atualizar o WebView do aparelho.';
+    $('verdict').textContent = v;
+  }
+  win.addEventListener('resize', function () { if ($('view-device').classList.contains('is-on')) facts(); });
+
+  // ---------- partida
+  win.FAROL = {
+    feed: function (d) { feed(d, false); },         // dados de verdade (scanner, GPS ou app Android)
+    link: link,                                      // link('obd'|'gps', ligado)
+    ledSink: null,                                   // quem recebe a cor: { setLed(r, g, b, brilho%) }
+    ledChanged: function () { emitPrev = ''; syncLed(); },
+    version: '0.2'
+  };
+  syncLed();
+  if (win.FarolNative) { source = 'wait'; } else { startSim(); }
+  chip();
+  win.requestAnimationFrame(frame);
+
+  // funciona sem internet depois da primeira vez e pode ser instalado na tela inicial
+  if ('serviceWorker' in navigator && win.isSecureContext) navigator.serviceWorker.register('sw.js').catch(function () {});
+})();
+</script>
+<script src="conexoes.js"></script>
+</body>
+</html>
